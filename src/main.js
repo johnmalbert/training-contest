@@ -229,6 +229,20 @@ async function loadData() {
   const playersResult = await api("/api/players");
   const datesResult = await api("/api/dates?limit=90");
 
+  if (!Array.isArray(playersResult?.players)) {
+    throw new Error(
+      "Could not load players from API. Check your Azure Static Web App API configuration and environment variables."
+    );
+  }
+
+  if (!Array.isArray(playersResult?.activityOptions)) {
+    throw new Error("Could not load activity options from API.");
+  }
+
+  if (!Array.isArray(datesResult?.dates)) {
+    throw new Error("Could not load dates from API.");
+  }
+
   playerSelect.innerHTML = "";
 
   playersResult.players.forEach((item, index) => {
