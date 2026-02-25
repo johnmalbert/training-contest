@@ -7,14 +7,20 @@ module.exports = async function (context, _req) {
 
     context.res = {
       status: 200,
-      jsonBody: result
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(result)
     };
   } catch (error) {
     context.res = {
       status: 500,
-      jsonBody: {
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
         error: error.message
-      }
+      })
     };
   }
 };

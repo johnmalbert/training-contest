@@ -8,14 +8,20 @@ module.exports = async function (context, req) {
 
     context.res = {
       status: 200,
-      jsonBody: { dates }
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ dates })
     };
   } catch (error) {
     context.res = {
       status: 500,
-      jsonBody: {
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
         error: error.message
-      }
+      })
     };
   }
 };
