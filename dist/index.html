@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>International Training Contest Logger</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" crossorigin src="/assets/index-CNtm1b1V.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-z8H-W-Da.css">
+  </head>
+  <body>
+    <main class="container">
+      <h1>International Training Contest Logger</h1>
+      <p class="subtitle">Select your player and submit Duration + Activity for a date.</p>
+
+      <section class="card">
+        <label for="playerSelect">Player</label>
+        <select id="playerSelect" disabled></select>
+
+        <label for="dateSelect">Date</label>
+        <select id="dateSelect" disabled></select>
+
+        <label for="durationInput">Duration (hh:mm)</label>
+        <input id="durationInput" type="text" placeholder="0:36" />
+
+        <label for="activitySelect">Activity</label>
+        <select id="activitySelect"></select>
+
+        <button id="submitButton" type="button" disabled>Submit</button>
+        <p id="status" class="status"></p>
+
+        <section id="suggestionCard" class="suggestion hidden" aria-live="polite">
+          <p id="suggestionMessage" class="suggestion-message"></p>
+          <div class="suggestion-actions">
+            <button id="suggestionAcceptButton" type="button">Use Suggested Date</button>
+            <button id="suggestionCancelButton" type="button" class="secondary">Keep Current Date</button>
+          </div>
+        </section>
+
+        <section id="celebration" class="celebration hidden" aria-live="polite">
+          <p id="celebrationMessage" class="celebration-message"></p>
+          <img
+            id="celebrationGif"
+            class="celebration-gif"
+            src="https://media.giphy.com/media/111ebonMs90YLu/giphy.gif"
+            alt="Celebration GIF"
+          />
+        </section>
+      </section>
+    </main>
+
+  </body>
+</html>
