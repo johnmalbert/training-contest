@@ -169,8 +169,10 @@ function updateSubmitEnabled() {
 
 function toIsoDateOnly(date) {
   const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy.toISOString().slice(0, 10);
+  const year = copy.getFullYear();
+  const month = String(copy.getMonth() + 1).padStart(2, "0");
+  const day = String(copy.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function formatDateLabel(isoDate) {
