@@ -1,16 +1,16 @@
 const { getService } = require("../shared/getService");
 
-module.exports = async function (_context, _req) {
+module.exports = async function (context, _req) {
   try {
     const service = getService();
     const result = await service.getPlayers();
 
-    return {
+    context.res = {
       status: 200,
       jsonBody: result
     };
   } catch (error) {
-    return {
+    context.res = {
       status: 500,
       jsonBody: {
         error: error.message

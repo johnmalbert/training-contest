@@ -1,17 +1,17 @@
 const { getService } = require("../shared/getService");
 
-module.exports = async function (_context, req) {
+module.exports = async function (context, req) {
   try {
     const service = getService();
     const result = await service.upsertPlayerEntry(req.body || {});
 
-    return {
+    context.res = {
       status: 200,
       jsonBody: { ok: true, result }
     };
   } catch (error) {
     if (error.code === "DATE_ALREADY_POPULATED") {
-      return {
+      context.res = {
         status: 409,
         jsonBody: {
           error: error.message,
@@ -19,9 +19,10 @@ module.exports = async function (_context, req) {
           suggestion: error.suggestion ?? null
         }
       };
+      return;
     }
 
-    return {
+    context.res = {
       status: 400,
       jsonBody: {
         error: error.message
