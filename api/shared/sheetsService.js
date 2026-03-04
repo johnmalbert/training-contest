@@ -2,6 +2,78 @@ const { google } = require("googleapis");
 
 const ACTIVITY_OPTIONS = ["-", "Bike", "Hike", "IndoorLow", "IndoorHigh", "Run", "Swim", "Tennis", "Walk"];
 const MAX_SUGGESTION_ROW_CHECKS = 45;
+const ACTIVITY_MULTIPLIERS = {
+  Tennis: 1.5,
+  Bike: 1.5,
+  Hike: 1.25,
+  Run: 1.85,
+  Swim: 1.85,
+  IndoorLow: 1.5,
+  IndoorHigh: 2,
+  Walk: 1
+};
+
+function roundToOneDecimal(value) {
+  return Math.round((value + Number.EPSILON) * 10) / 10;
+}
+
+function parseDurationToMinutes(durationText) {
+  if (typeof durationText === "number" && Number.isFinite(durationText)) {
+    return Math.max(0, Math.round(durationText * 24 * 60));
+  }
+
+  const text = String(durationText ?? "").trim();
+
+  if (/^-?\d+(\.\d+)?$/.test(text)) {
+    const numericValue = Number(text);
+    if (Number.isFinite(numericValue)) {
+      return Math.max(0, Math.round(numericValue * 24 * 60));
+    }
+  }
+
+  const match = text.match(/^(\d{1,3}):(\d{2})$/);
+
+  if (!match) {
+    throw new Error(`Invalid duration format: ${text || "(blank)"}. Expected hh:mm.`);
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (minutes > 59) {
+    throw new Error(`Invalid duration format: ${text}. Minutes must be 00-59.`);
+  }
+
+  return hours * 60 + minutes;
+}
+
+function formatMinutesToDuration(totalMinutes) {
+  const safeMinutes = Math.max(0, Math.round(Number(totalMinutes) || 0));
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
+  return `${hours}:${String(minutes).padStart(2, "0")}`;
+}
+
+function calculateWorkoutPoints(durationText, activity) {
+  const multiplier = ACTIVITY_MULTIPLIERS[activity];
+
+  if (!multiplier) {
+    throw new Error(`Cannot calculate points for unknown activity: ${activity || "(blank)"}.`);
+  }
+
+  const minutes = parseDurationToMinutes(durationText);
+  return roundToOneDecimal(0.1 * minutes * multiplier);
+}
+
+function convertPointsToActivityMinutes(points, activity) {
+  const multiplier = ACTIVITY_MULTIPLIERS[activity];
+
+  if (!multiplier) {
+    throw new Error(`Cannot convert points for unknown activity: ${activity || "(blank)"}.`);
+  }
+
+  return Math.max(0, Math.round(Number(points) / (0.1 * multiplier)));
+}
 
 function normalize(value) {
   return String(value ?? "")
@@ -36,6 +108,24 @@ function columnIndexToLetter(index) {
   }
 
   return str;
+}
+
+function columnLetterToIndex(letter) {
+  const text = String(letter ?? "").trim().toUpperCase();
+  if (!/^[A-Z]+$/.test(text)) {
+    throw new Error(`Invalid column letter: ${letter || "(blank)"}`);
+  }
+
+  let index = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    index = index * 26 + (text.charCodeAt(i) - 64);
+  }
+
+  return index - 1;
+}
+
+function formatDurationForComment(durationText) {
+  return formatMinutesToDuration(parseDurationToMinutes(durationText));
 }
 
 function parseSheetHeaders(rows) {
@@ -195,6 +285,33 @@ function buildDateOccupiedError(message, suggestion = null) {
   return error;
 }
 
+function buildDateOccupiedMergePreview({ existingDuration, existingActivity, incomingDuration, incomingActivity }) {
+  const safeExistingActivity = String(existingActivity ?? "").trim();
+
+  if (!safeExistingActivity || safeExistingActivity === "-" || !ACTIVITY_MULTIPLIERS[safeExistingActivity]) {
+    return null;
+  }
+
+  const existingPoints = calculateWorkoutPoints(existingDuration, safeExistingActivity);
+  const incomingMinutes = parseDurationToMinutes(incomingDuration);
+  const incomingPoints = calculateWorkoutPoints(incomingDuration, incomingActivity);
+  const totalPoints = roundToOneDecimal(existingPoints + incomingPoints);
+  const appendMinutes = convertPointsToActivityMinutes(incomingPoints, safeExistingActivity);
+  const existingMinutes = parseDurationToMinutes(existingDuration);
+  const mergedMinutes = existingMinutes + appendMinutes;
+
+  return {
+    existingActivity: safeExistingActivity,
+    existingDuration,
+    incomingActivity,
+    incomingDuration,
+    incomingMinutes,
+    appendMinutes,
+    projectedScore: totalPoints,
+    mergedDuration: formatMinutesToDuration(mergedMinutes)
+  };
+}
+
 class SheetsService {
   constructor() {
     const privateKeyRaw = process.env.GOOGLE_SHEETS_PRIVATE_KEY;
@@ -218,6 +335,57 @@ class SheetsService {
     this.cachedHeaderInfo = null;
     this.cachedAt = 0;
     this.cacheMs = 30000;
+    this.cachedSheetId = null;
+  }
+
+  async getSheetId() {
+    if (Number.isInteger(this.cachedSheetId)) {
+      return this.cachedSheetId;
+    }
+
+    const response = await this.sheets.spreadsheets.get({
+      spreadsheetId: this.spreadsheetId,
+      fields: "sheets(properties(sheetId,title))"
+    });
+
+    const sheets = response.data.sheets ?? [];
+    const matchingSheet = sheets.find((sheet) => sheet?.properties?.title === this.sheetName);
+
+    if (!matchingSheet?.properties || !Number.isInteger(matchingSheet.properties.sheetId)) {
+      throw new Error(`Could not resolve sheet id for \"${this.sheetName}\".`);
+    }
+
+    this.cachedSheetId = matchingSheet.properties.sheetId;
+    return this.cachedSheetId;
+  }
+
+  async setCellNote({ row, columnLetter, noteText }) {
+    const sheetId = await this.getSheetId();
+    const columnIndex = columnLetterToIndex(columnLetter);
+    const rowIndex = row - 1;
+
+    await this.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            repeatCell: {
+              range: {
+                sheetId,
+                startRowIndex: rowIndex,
+                endRowIndex: rowIndex + 1,
+                startColumnIndex: columnIndex,
+                endColumnIndex: columnIndex + 1
+              },
+              cell: {
+                note: String(noteText ?? "")
+              },
+              fields: "note"
+            }
+          }
+        ]
+      }
+    });
   }
 
   async getHeaderInfo(forceRefresh = false) {
@@ -424,7 +592,7 @@ class SheetsService {
     };
   }
 
-  async upsertPlayerEntry({ player, date, duration, activity }) {
+  async upsertPlayerEntry({ player, date, duration, activity, addToSameDay = false }) {
     const headerInfo = await this.getHeaderInfo();
     const playerInfo = headerInfo.players.find((p) => p.player === player);
 
@@ -458,7 +626,104 @@ class SheetsService {
 
     const rowState = await this.getRowState({ durationColumn, activityColumn, scoreColumn }, targetRow);
 
+    let existingScoreFormulaText = "";
+    if (scoreColumn) {
+      const scoreStateBeforeWrite = await this.getScoreState(scoreColumn, targetRow);
+      existingScoreFormulaText = scoreStateBeforeWrite.formulaText;
+    }
+
     if (rowState.hasExistingDuration || rowState.hasExistingActivity) {
+      if (addToSameDay) {
+        const existingDuration = rowState.existingDuration;
+        const existingActivity = rowState.existingActivity;
+
+        if (!existingDuration || !existingActivity || existingActivity === "-") {
+          throw new Error("Cannot combine this row because existing duration/activity data is incomplete.");
+        }
+
+        const existingMinutes = parseDurationToMinutes(existingDuration);
+        const incomingPoints = calculateWorkoutPoints(trimmedDuration, activity);
+        const appendMinutes = convertPointsToActivityMinutes(incomingPoints, existingActivity);
+        const mergedDuration = formatMinutesToDuration(existingMinutes + appendMinutes);
+        const mergedActivity = existingActivity;
+        const shouldAddMixedWorkoutNote = scoreColumn && normalize(existingActivity) !== normalize(activity);
+
+        const mixedWorkoutNote = shouldAddMixedWorkoutNote
+          ? `Combined workouts:\n${existingActivity} ${formatDurationForComment(existingDuration)}\n${activity} ${formatDurationForComment(trimmedDuration)}`
+          : "";
+
+        if (this.dryRun) {
+          return {
+            player,
+            date: normalizedDate,
+            row: targetRow,
+            duration: mergedDuration,
+            activity: mergedActivity,
+            durationColumn,
+            activityColumn,
+            score: null,
+            merged: true,
+            incomingPoints,
+            appendMinutes,
+            scoreNote: shouldAddMixedWorkoutNote ? mixedWorkoutNote : null,
+            dryRun: true
+          };
+        }
+
+        await this.sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId: this.spreadsheetId,
+          requestBody: {
+            valueInputOption: "USER_ENTERED",
+            data: [
+              { range: `${this.sheetName}!${durationColumn}${targetRow}`, values: [[mergedDuration]] },
+              { range: `${this.sheetName}!${activityColumn}${targetRow}`, values: [[mergedActivity]] }
+            ]
+          }
+        });
+
+        if (shouldAddMixedWorkoutNote) {
+          try {
+            await this.setCellNote({
+              row: targetRow,
+              columnLetter: scoreColumn,
+              noteText: mixedWorkoutNote
+            });
+          } catch (noteError) {
+            const noteMessage = String(noteError?.message ?? "").toLowerCase();
+            const isProtectedCellError =
+              noteMessage.includes("protected cell") || noteMessage.includes("edit a protected");
+
+            if (!isProtectedCellError) {
+              throw noteError;
+            }
+          }
+        }
+
+        const mergedScore = scoreColumn ? await this.getScoreValue(scoreColumn, targetRow, existingScoreFormulaText) : null;
+
+        return {
+          player,
+          date: normalizedDate,
+          row: targetRow,
+          duration: mergedDuration,
+          activity: mergedActivity,
+          durationColumn,
+          activityColumn,
+          score: mergedScore,
+          merged: true,
+          incomingPoints,
+          appendMinutes,
+          scoreNote: shouldAddMixedWorkoutNote ? mixedWorkoutNote : null
+        };
+      }
+
+      const mergePreview = buildDateOccupiedMergePreview({
+        existingDuration: rowState.existingDuration,
+        existingActivity: rowState.existingActivity,
+        incomingDuration: trimmedDuration,
+        incomingActivity: activity
+      });
+
       const suggestionResult = await this.findSuggestedDate({
         dateRows,
         normalizedDate,
@@ -467,23 +732,23 @@ class SheetsService {
         scoreColumn
       });
 
-      const baseMessage = `This row already has data (Duration: ${rowState.existingDuration || "(blank)"}, Activity: ${rowState.existingActivity || "(blank)"}). Update was not applied.`;
+      const baseMessage = `This row already has data (Duration: ${rowState.existingDuration || "(blank)"}, Activity: ${rowState.existingActivity || "(blank)"}).`;
 
       if (suggestionResult?.date) {
-        throw buildDateOccupiedError(`${baseMessage} Suggested date: ${suggestionResult.date}.`, suggestionResult);
+        const occupiedError = buildDateOccupiedError(`${baseMessage} Suggested date: ${suggestionResult.date}.`, suggestionResult);
+        occupiedError.mergePreview = mergePreview;
+        throw occupiedError;
       }
 
       if (suggestionResult?.reachedCheckLimit) {
-        throw buildDateOccupiedError("All previous rows appear taken. Please select another date.", null);
+        const occupiedError = buildDateOccupiedError("All previous rows appear taken. Please select another date.", null);
+        occupiedError.mergePreview = mergePreview;
+        throw occupiedError;
       }
 
-      throw buildDateOccupiedError("All previous rows appear taken. Please select another date.", null);
-    }
-
-    let existingScoreFormulaText = "";
-    if (scoreColumn) {
-      const scoreStateBeforeWrite = await this.getScoreState(scoreColumn, targetRow);
-      existingScoreFormulaText = scoreStateBeforeWrite.formulaText;
+      const occupiedError = buildDateOccupiedError("All previous rows appear taken. Please select another date.", null);
+      occupiedError.mergePreview = mergePreview;
+      throw occupiedError;
     }
 
     if (this.dryRun) {

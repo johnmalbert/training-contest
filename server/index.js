@@ -75,7 +75,8 @@ app.post("/api/entry", async (req, res) => {
       return res.status(409).json({
         error: error.message,
         code: error.code,
-        suggestion: error.suggestion ?? null
+        suggestion: error.suggestion ?? null,
+        mergePreview: error.mergePreview ?? null
       });
     }
 

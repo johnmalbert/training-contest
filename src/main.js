@@ -10,43 +10,41 @@ const suggestionCardEl = document.getElementById("suggestionCard");
 const suggestionMessageEl = document.getElementById("suggestionMessage");
 const suggestionAcceptButton = document.getElementById("suggestionAcceptButton");
 const suggestionCancelButton = document.getElementById("suggestionCancelButton");
+const decisionCardEl = document.getElementById("decisionCard");
+const decisionMessageEl = document.getElementById("decisionMessage");
+const decisionAcceptButton = document.getElementById("decisionAcceptButton");
+const decisionCancelButton = document.getElementById("decisionCancelButton");
 const celebrationEl = document.getElementById("celebration");
 const celebrationMessageEl = document.getElementById("celebrationMessage");
 const celebrationGifEl = document.getElementById("celebrationGif");
 const defaultSubmitLabel = submitButton.textContent;
 let pendingSuggestion = null;
+let pendingDecisionResolver = null;
 
 const WORKING_GIFS = [
-  "https://media.giphy.com/media/xT9IgG50Fb7Mi0prBC/giphy.gif",
-  "https://media.giphy.com/media/12XDYvMJNcmLgQ/giphy.gif",
-  "https://media.tenor.com/1mwdqr51emcAAAAd/happy-dance.gif",
-  "https://media.tenor.com/yCFHzEvKa9MAAAAC/party-time.gif",
-  "https://media.tenor.com/2roX3uxz_68AAAAC/cat-space.gif",
-  "https://media.tenor.com/5ry-200hErMAAAAC/happy-dance-cat.gif",
-  "https://media.tenor.com/3x63SNMKPogAAAAC/minions-celebrate.gif",
-  "https://media.tenor.com/uUNcnHwYJQEAAAAC/rick-roll.gif"
+  "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExbHFsY2FpMWx1c251eWQ3YmxjaDF3Nmljbm8ya25iZmJic2xtdDJlZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/QTrG6mjkHEkpFR3DqX/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3NjJ1NWc5NnRqNTlidHJjOGh3eWlxZ21rdzE4dzRvbWNwdG1vY2FzNCZlcD12MV9naWZzX3JlbGF0ZWQmY3Q9Zw/mEYkuPOOyHcYn5xgDP/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExcW8xMXdmY3o5aHcxMDF3Ym51YTF2dGdjYXI5NXN2eHdtajRzMWI3cyZlcD12MV9naWZzX3NlYXJjaCZjdD1n/blEl99OgPQnNS/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGhxdW1pMTBzdmMwbWtpaGl0eGFrcWpoMDA3MzJjMDJmOG42enRkdCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/MOWPkhRAUbR7i/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExeHo0eGJxY2ZzaXZ4aWl4MWxpMGl4ZWhrcmp6bWkwcjhpeXBrbjk0bSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/EO59xGjMkWPhlWtMoc/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3MnBheDd3YWtpdGt5Mnhzd2xra3p0cXgwYTA4eG0ybmFtb2o0Y2N2dyZlcD12MV9naWZzX3NlYXJjaCZjdD1n/mjFghXHxT5ir8LLdsC/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3ZWM2dmMxcDduZm93ODY5b2ticXl0a2p6dDNiamphd2MxeTVxbXNveCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/TPUMgbPw9y0fTSfFgs/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3bm9ibXZpM211dXBjZ2Nub3F6aTQ3ZW96NG85M21zbzVkNzVjMHJhMiZlcD12MV9naWZzX3NlYXJjaCZjdD1n/MTZ5fSq0pLWgHHU8uU/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZnNtNGxwZnQ0Y3UyZWplMXQyc2xpZ2k2M2tqNHNnbnQ5dzQxczRkayZlcD12MV9naWZzX3NlYXJjaCZjdD1n/CWKcLd53mbw0o/giphy.gif",
+  "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZnNtNGxwZnQ0Y3UyZWplMXQyc2xpZ2k2M2tqNHNnbnQ5dzQxczRkayZlcD12MV9naWZzX3NlYXJjaCZjdD1n/SVH9y2LQUVVCRcqD7o/giphy.gif",
+  "https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExc2Jpc2cza2xjcHZvcjA1ZWNvd3F6anQzcmwycjVraDZuYXF1NmlwZiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7bukMYQO9OhjzzTG/giphy.gif"
 ];
 
-const CELEBRATION_TIERS = [
-  { maxScore: 5, gif: WORKING_GIFS[0] },
-  { maxScore: 10, gif: WORKING_GIFS[1] },
-  { maxScore: 15, gif: WORKING_GIFS[2] },
-  { maxScore: 20, gif: WORKING_GIFS[3] },
-  { maxScore: 25, gif: WORKING_GIFS[4] },
-  { maxScore: 30, gif: WORKING_GIFS[5] },
-  { maxScore: Infinity, gif: WORKING_GIFS[6] }
-];
-
-const DEFAULT_GIF = CELEBRATION_TIERS[0].gif;
+const DEFAULT_GIF = WORKING_GIFS[0];
 let currentGifIndex = 0;
 
-function getGifForScore(scoreNumber) {
-  if (!Number.isFinite(scoreNumber)) {
+function getRandomGif() {
+  if (!WORKING_GIFS.length) {
     return DEFAULT_GIF;
   }
 
-  const tier = CELEBRATION_TIERS.find((item) => scoreNumber <= item.maxScore);
-  return tier ? tier.gif : DEFAULT_GIF;
+  const randomIndex = Math.floor(Math.random() * WORKING_GIFS.length);
+  return WORKING_GIFS[randomIndex];
 }
 
 celebrationGifEl.addEventListener("error", () => {
@@ -71,6 +69,26 @@ function hideSuggestion() {
   suggestionMessageEl.textContent = "";
 }
 
+function hideDecision() {
+  decisionCardEl.classList.add("hidden");
+  decisionMessageEl.textContent = "";
+  decisionAcceptButton.textContent = "Yes";
+  decisionCancelButton.textContent = "No";
+  pendingDecisionResolver = null;
+}
+
+function showDecision({ message, acceptLabel = "Yes", cancelLabel = "No" }) {
+  hideSuggestion();
+  decisionMessageEl.textContent = message;
+  decisionAcceptButton.textContent = acceptLabel;
+  decisionCancelButton.textContent = cancelLabel;
+  decisionCardEl.classList.remove("hidden");
+
+  return new Promise((resolve) => {
+    pendingDecisionResolver = resolve;
+  });
+}
+
 function showSuggestion({ message, suggestedDate, payload }) {
   pendingSuggestion = { suggestedDate, payload };
   suggestionMessageEl.textContent = `You already have a score for this date. Want to add this score to ${formatDateLabel(suggestedDate)} instead?`;
@@ -82,6 +100,8 @@ function setSubmitting(isSubmitting) {
   submitButton.textContent = isSubmitting ? "Saving..." : defaultSubmitLabel;
   suggestionAcceptButton.disabled = isSubmitting;
   suggestionCancelButton.disabled = isSubmitting;
+  decisionAcceptButton.disabled = isSubmitting;
+  decisionCancelButton.disabled = isSubmitting;
 }
 
 function hideCelebration() {
@@ -97,7 +117,7 @@ function showCelebration({ player, score }) {
   const scoreNumber = Number(score);
   const isBigCelebration = Number.isFinite(scoreNumber) && scoreNumber > 10;
 
-  const selectedGif = getGifForScore(scoreNumber);
+  const selectedGif = getRandomGif();
   celebrationGifEl.src = selectedGif;
   currentGifIndex = WORKING_GIFS.indexOf(selectedGif);
   celebrationEl.classList.toggle("big", isBigCelebration);
@@ -127,6 +147,7 @@ async function api(path, options = {}) {
     error.status = response.status;
     error.code = payload.code;
     error.suggestion = payload.suggestion;
+    error.mergePreview = payload.mergePreview;
     throw error;
   }
 
@@ -146,10 +167,59 @@ function ensureDateOption(isoDate) {
 
 function applySuccess(result) {
   hideSuggestion();
-  setStatus(`Saved for ${result.player} on ${result.date} (row ${result.row}).`, "success");
+  hideDecision();
+  const baseMessage = result.merged
+    ? `Updated ${result.player} on ${result.date} (row ${result.row}) by combining workouts into ${result.activity} ${result.duration}.`
+    : `Saved for ${result.player} on ${result.date} (row ${result.row}).`;
+  setStatus(baseMessage, "success");
   showCelebration({
     player: result.player,
     score: result.score
+  });
+}
+
+async function askToAddAnotherSameDay() {
+  return showDecision({
+    message: "Do you want to add another workout for this same day?",
+    acceptLabel: "Add Another",
+    cancelLabel: "Done"
+  });
+}
+
+function buildMergeConfirmMessage(error) {
+  const preview = error?.mergePreview;
+
+  if (!preview) {
+    return `${error.message}\n\nDo you want to add this workout to the same day by converting points into equivalent duration for the existing activity?`;
+  }
+
+  const incomingMinutes = Number(preview.incomingMinutes);
+  const appendMinutes = Number(preview.appendMinutes);
+  let conversionText = "";
+
+  if (Number.isFinite(incomingMinutes) && incomingMinutes > 0 && Number.isFinite(appendMinutes)) {
+    const factor = appendMinutes / incomingMinutes;
+    const factorText = Number.isInteger(factor) ? String(factor) : factor.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+    conversionText = ` (${incomingMinutes} * ${factorText} = ${appendMinutes})`;
+  }
+
+  return `You already have a ${preview.existingActivity} workout for this day. Want to append ${preview.appendMinutes} minutes to bring your score up to ${preview.projectedScore}?${conversionText}`;
+}
+
+function prepareForAnotherSameDayEntry() {
+  durationInput.value = "";
+  activitySelect.value = "Run";
+  hideSuggestion();
+  updateSubmitEnabled();
+  setStatus("Enter another workout for the same day.");
+  durationInput.focus();
+}
+
+async function askToMergeSameDay(error) {
+  return showDecision({
+    message: buildMergeConfirmMessage(error),
+    acceptLabel: "Append Workout",
+    cancelLabel: "No"
   });
 }
 
@@ -226,6 +296,7 @@ function buildDateChoices(allDates) {
 async function loadData() {
   setStatus("Loading players...");
   hideSuggestion();
+  hideDecision();
   hideCelebration();
 
   const playersResult = await api("/api/players");
@@ -320,15 +391,48 @@ async function submitEntry() {
     });
 
     applySuccess(result.result);
+    setSubmitting(false);
+    if (await askToAddAnotherSameDay()) {
+      prepareForAnotherSameDayEntry();
+    }
   } catch (error) {
-    if (error.code === "DATE_ALREADY_POPULATED" && error.suggestion?.date) {
-      showSuggestion({
-        message: error.message,
-        suggestedDate: error.suggestion.date,
-        payload
-      });
-      setStatus("");
-      hideCelebration();
+    if (error.code === "DATE_ALREADY_POPULATED") {
+      setSubmitting(false);
+      const shouldMergeSameDay = await askToMergeSameDay(error);
+
+      if (shouldMergeSameDay) {
+        try {
+          setSubmitting(true);
+          setStatus("Submitting...");
+          const mergedResult = await api("/api/entry", {
+            method: "POST",
+            body: JSON.stringify({
+              ...payload,
+              addToSameDay: true
+            })
+          });
+
+          applySuccess(mergedResult.result);
+          setSubmitting(false);
+          if (await askToAddAnotherSameDay()) {
+            prepareForAnotherSameDayEntry();
+          }
+        } catch (mergeError) {
+          setStatus(mergeError.message, "error");
+          hideCelebration();
+        }
+      } else if (error.suggestion?.date) {
+        showSuggestion({
+          message: error.message,
+          suggestedDate: error.suggestion.date,
+          payload
+        });
+        setStatus("");
+        hideCelebration();
+      } else {
+        setStatus(error.message, "error");
+        hideCelebration();
+      }
     } else {
       setStatus(error.message, "error");
       hideCelebration();
@@ -360,6 +464,9 @@ async function applySuggestedDate() {
 
     ensureDateOption(retryPayload.date);
     applySuccess(retryResult.result);
+    if (await askToAddAnotherSameDay()) {
+      prepareForAnotherSameDayEntry();
+    }
   } catch (error) {
     setStatus(error.message, "error");
     hideCelebration();
@@ -372,6 +479,17 @@ async function applySuggestedDate() {
 function cancelSuggestedDate() {
   hideSuggestion();
   setStatus("Suggestion dismissed. Choose a different date to continue.", "error");
+}
+
+function resolveDecision(value) {
+  if (!pendingDecisionResolver) {
+    return;
+  }
+
+  const resolve = pendingDecisionResolver;
+  pendingDecisionResolver = null;
+  hideDecision();
+  resolve(Boolean(value));
 }
 
 [playerSelect, dateSelect, durationInput, activitySelect].forEach((el) => {
@@ -388,6 +506,8 @@ function cancelSuggestedDate() {
 submitButton.addEventListener("click", submitEntry);
 suggestionAcceptButton.addEventListener("click", applySuggestedDate);
 suggestionCancelButton.addEventListener("click", cancelSuggestedDate);
+decisionAcceptButton.addEventListener("click", () => resolveDecision(true));
+decisionCancelButton.addEventListener("click", () => resolveDecision(false));
 
 loadData().catch((error) => {
   setStatus(error.message, "error");

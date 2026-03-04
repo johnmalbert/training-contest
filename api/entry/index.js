@@ -22,7 +22,8 @@ module.exports = async function (context, req) {
         body: JSON.stringify({
           error: error.message,
           code: error.code,
-          suggestion: error.suggestion ?? null
+          suggestion: error.suggestion ?? null,
+          mergePreview: error.mergePreview ?? null
         })
       };
       return;
