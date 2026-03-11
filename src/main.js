@@ -19,6 +19,7 @@ const celebrationEl = document.getElementById("celebration");
 const celebrationMessageEl = document.getElementById("celebrationMessage");
 const celebrationGifEl = document.getElementById("celebrationGif");
 const celebrationTotalEl = document.getElementById("celebrationTotal");
+const leaderboardCardEl = document.getElementById("leaderboardCard");
 const leadersListEl = document.getElementById("leadersList");
 const leadersStatusEl = document.getElementById("leadersStatus");
 const defaultSubmitLabel = submitButton.textContent;
@@ -218,6 +219,8 @@ function applySuccess(result) {
     activity: result.activity,
     totalScore: result.totalScore
   });
+
+  leaderboardCardEl.classList.remove("hidden");
 
   loadLeaders().catch(() => {
     leadersStatusEl.textContent = "Unable to refresh leaders right now.";
@@ -491,11 +494,6 @@ async function loadData() {
   dateSelect.disabled = false;
   submitButton.disabled = false;
   updateSubmitEnabled();
-  try {
-    await loadLeaders();
-  } catch {
-    leadersStatusEl.textContent = "Unable to load leaders right now.";
-  }
   setStatus("Ready.");
 }
 
