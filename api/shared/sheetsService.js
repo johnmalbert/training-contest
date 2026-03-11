@@ -110,24 +110,6 @@ function columnIndexToLetter(index) {
   return str;
 }
 
-function columnLetterToIndex(letter) {
-  const text = String(letter ?? "").trim().toUpperCase();
-  if (!/^[A-Z]+$/.test(text)) {
-    throw new Error(`Invalid column letter: ${letter || "(blank)"}`);
-  }
-
-  let index = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    index = index * 26 + (text.charCodeAt(i) - 64);
-  }
-
-  return index - 1;
-}
-
-function formatDurationForComment(durationText) {
-  return formatMinutesToDuration(parseDurationToMinutes(durationText));
-}
-
 function parseSheetHeaders(rows) {
   const maxColumns = Math.max(...rows.map((r) => r.length), 0);
 
@@ -285,30 +267,88 @@ function buildDateOccupiedError(message, suggestion = null) {
   return error;
 }
 
+function calculateMergedWorkout({ existingDuration, existingActivity, incomingDuration, incomingActivity }) {
+  const existingMinutes = parseDurationToMinutes(existingDuration);
+  const incomingMinutes = parseDurationToMinutes(incomingDuration);
+  const existingPoints = calculateWorkoutPoints(existingDuration, existingActivity);
+  const incomingPoints = calculateWorkoutPoints(incomingDuration, incomingActivity);
+  const existingMultiplier = ACTIVITY_MULTIPLIERS[existingActivity];
+  const incomingMultiplier = ACTIVITY_MULTIPLIERS[incomingActivity];
+  const useIncomingAsBasis = incomingMultiplier > existingMultiplier;
+  const basisActivity = useIncomingAsBasis ? incomingActivity : existingActivity;
+  const basisSource = useIncomingAsBasis ? "incoming" : "existing";
+  const basisMultiplier = useIncomingAsBasis ? incomingMultiplier : existingMultiplier;
+  const basisMinutes = useIncomingAsBasis ? incomingMinutes : existingMinutes;
+  const convertedWorkoutActivity = useIncomingAsBasis ? existingActivity : incomingActivity;
+  const convertedWorkoutMinutes = useIncomingAsBasis ? existingMinutes : incomingMinutes;
+  const convertedWorkoutPoints = useIncomingAsBasis ? existingPoints : incomingPoints;
+  const appendMinutes = convertPointsToActivityMinutes(convertedWorkoutPoints, basisActivity);
+  const mergedMinutes = basisMinutes + appendMinutes;
+  const totalPoints = roundToOneDecimal(existingPoints + incomingPoints);
+
+  return {
+    basisActivity,
+    basisSource,
+    basisMultiplier,
+    basisMinutes,
+    existingMinutes,
+    incomingMinutes,
+    existingMultiplier,
+    incomingMultiplier,
+    existingPoints,
+    incomingPoints,
+    convertedWorkoutActivity,
+    convertedWorkoutMinutes,
+    convertedWorkoutPoints,
+    appendMinutes,
+    mergedDuration: formatMinutesToDuration(mergedMinutes),
+    totalPoints
+  };
+}
+
 function buildDateOccupiedMergePreview({ existingDuration, existingActivity, incomingDuration, incomingActivity }) {
   const safeExistingActivity = String(existingActivity ?? "").trim();
+  const safeIncomingActivity = String(incomingActivity ?? "").trim();
 
-  if (!safeExistingActivity || safeExistingActivity === "-" || !ACTIVITY_MULTIPLIERS[safeExistingActivity]) {
+  if (
+    !safeExistingActivity ||
+    safeExistingActivity === "-" ||
+    !ACTIVITY_MULTIPLIERS[safeExistingActivity] ||
+    !safeIncomingActivity ||
+    safeIncomingActivity === "-" ||
+    !ACTIVITY_MULTIPLIERS[safeIncomingActivity]
+  ) {
     return null;
   }
 
-  const existingPoints = calculateWorkoutPoints(existingDuration, safeExistingActivity);
-  const incomingMinutes = parseDurationToMinutes(incomingDuration);
-  const incomingPoints = calculateWorkoutPoints(incomingDuration, incomingActivity);
-  const totalPoints = roundToOneDecimal(existingPoints + incomingPoints);
-  const appendMinutes = convertPointsToActivityMinutes(incomingPoints, safeExistingActivity);
-  const existingMinutes = parseDurationToMinutes(existingDuration);
-  const mergedMinutes = existingMinutes + appendMinutes;
+  const mergePlan = calculateMergedWorkout({
+    existingDuration,
+    existingActivity: safeExistingActivity,
+    incomingDuration,
+    incomingActivity: safeIncomingActivity
+  });
 
   return {
     existingActivity: safeExistingActivity,
     existingDuration,
-    incomingActivity,
+    incomingActivity: safeIncomingActivity,
     incomingDuration,
-    incomingMinutes,
-    appendMinutes,
-    projectedScore: totalPoints,
-    mergedDuration: formatMinutesToDuration(mergedMinutes)
+    basisActivity: mergePlan.basisActivity,
+    basisSource: mergePlan.basisSource,
+    basisMultiplier: mergePlan.basisMultiplier,
+    basisMinutes: mergePlan.basisMinutes,
+    existingMinutes: mergePlan.existingMinutes,
+    incomingMinutes: mergePlan.incomingMinutes,
+    existingMultiplier: mergePlan.existingMultiplier,
+    incomingMultiplier: mergePlan.incomingMultiplier,
+    existingPoints: mergePlan.existingPoints,
+    incomingPoints: mergePlan.incomingPoints,
+    convertedWorkoutActivity: mergePlan.convertedWorkoutActivity,
+    convertedWorkoutMinutes: mergePlan.convertedWorkoutMinutes,
+    convertedWorkoutPoints: mergePlan.convertedWorkoutPoints,
+    appendMinutes: mergePlan.appendMinutes,
+    projectedScore: mergePlan.totalPoints,
+    mergedDuration: mergePlan.mergedDuration
   };
 }
 
@@ -357,35 +397,6 @@ class SheetsService {
 
     this.cachedSheetId = matchingSheet.properties.sheetId;
     return this.cachedSheetId;
-  }
-
-  async setCellNote({ row, columnLetter, noteText }) {
-    const sheetId = await this.getSheetId();
-    const columnIndex = columnLetterToIndex(columnLetter);
-    const rowIndex = row - 1;
-
-    await this.sheets.spreadsheets.batchUpdate({
-      spreadsheetId: this.spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            repeatCell: {
-              range: {
-                sheetId,
-                startRowIndex: rowIndex,
-                endRowIndex: rowIndex + 1,
-                startColumnIndex: columnIndex,
-                endColumnIndex: columnIndex + 1
-              },
-              cell: {
-                note: String(noteText ?? "")
-              },
-              fields: "note"
-            }
-          }
-        ]
-      }
-    });
   }
 
   async getHeaderInfo(forceRefresh = false) {
@@ -592,7 +603,7 @@ class SheetsService {
     };
   }
 
-  async upsertPlayerEntry({ player, date, duration, activity, addToSameDay = false }) {
+  async upsertPlayerEntry({ player, date, duration, activity, addToSameDay = false, overwriteExisting = false }) {
     const headerInfo = await this.getHeaderInfo();
     const playerInfo = headerInfo.players.find((p) => p.player === player);
 
@@ -641,17 +652,28 @@ class SheetsService {
           throw new Error("Cannot combine this row because existing duration/activity data is incomplete.");
         }
 
-        const existingMinutes = parseDurationToMinutes(existingDuration);
         const incomingPoints = calculateWorkoutPoints(trimmedDuration, activity);
-        const appendMinutes = convertPointsToActivityMinutes(incomingPoints, existingActivity);
-        const mergedDuration = formatMinutesToDuration(existingMinutes + appendMinutes);
-        const mergedActivity = existingActivity;
-        const shouldAddMixedWorkoutNote = scoreColumn && normalize(existingActivity) !== normalize(activity);
-
-        const mixedWorkoutNote = shouldAddMixedWorkoutNote
-          ? `Combined workouts:\n${existingActivity} ${formatDurationForComment(existingDuration)}\n${activity} ${formatDurationForComment(trimmedDuration)}`
-          : "";
-
+        const mergePlan = calculateMergedWorkout({
+          existingDuration,
+          existingActivity,
+          incomingDuration: trimmedDuration,
+          incomingActivity: activity
+        });
+        const appendMinutes = mergePlan.appendMinutes;
+        const mergedDuration = mergePlan.mergedDuration;
+        const mergedActivity = mergePlan.basisActivity;
+        const existingDurationDisplay = formatMinutesToDuration(parseDurationToMinutes(existingDuration));
+        const incomingDurationDisplay = formatMinutesToDuration(parseDurationToMinutes(trimmedDuration));
+        const combinedWorkouts = [
+          {
+            activity: existingActivity,
+            duration: existingDurationDisplay
+          },
+          {
+            activity,
+            duration: incomingDurationDisplay
+          }
+        ];
         if (this.dryRun) {
           return {
             player,
@@ -665,7 +687,7 @@ class SheetsService {
             merged: true,
             incomingPoints,
             appendMinutes,
-            scoreNote: shouldAddMixedWorkoutNote ? mixedWorkoutNote : null,
+            combinedWorkouts,
             dryRun: true
           };
         }
@@ -681,24 +703,6 @@ class SheetsService {
           }
         });
 
-        if (shouldAddMixedWorkoutNote) {
-          try {
-            await this.setCellNote({
-              row: targetRow,
-              columnLetter: scoreColumn,
-              noteText: mixedWorkoutNote
-            });
-          } catch (noteError) {
-            const noteMessage = String(noteError?.message ?? "").toLowerCase();
-            const isProtectedCellError =
-              noteMessage.includes("protected cell") || noteMessage.includes("edit a protected");
-
-            if (!isProtectedCellError) {
-              throw noteError;
-            }
-          }
-        }
-
         const mergedScore = scoreColumn ? await this.getScoreValue(scoreColumn, targetRow, existingScoreFormulaText) : null;
 
         return {
@@ -713,42 +717,46 @@ class SheetsService {
           merged: true,
           incomingPoints,
           appendMinutes,
-          scoreNote: shouldAddMixedWorkoutNote ? mixedWorkoutNote : null
+          combinedWorkouts
         };
       }
 
-      const mergePreview = buildDateOccupiedMergePreview({
-        existingDuration: rowState.existingDuration,
-        existingActivity: rowState.existingActivity,
-        incomingDuration: trimmedDuration,
-        incomingActivity: activity
-      });
+      if (overwriteExisting) {
+        // Continue through to standard write path below and replace existing values.
+      } else {
+        const mergePreview = buildDateOccupiedMergePreview({
+          existingDuration: rowState.existingDuration,
+          existingActivity: rowState.existingActivity,
+          incomingDuration: trimmedDuration,
+          incomingActivity: activity
+        });
 
-      const suggestionResult = await this.findSuggestedDate({
-        dateRows,
-        normalizedDate,
-        durationColumn,
-        activityColumn,
-        scoreColumn
-      });
+        const suggestionResult = await this.findSuggestedDate({
+          dateRows,
+          normalizedDate,
+          durationColumn,
+          activityColumn,
+          scoreColumn
+        });
 
-      const baseMessage = `This row already has data (Duration: ${rowState.existingDuration || "(blank)"}, Activity: ${rowState.existingActivity || "(blank)"}).`;
+        const baseMessage = `This row already has data (Duration: ${rowState.existingDuration || "(blank)"}, Activity: ${rowState.existingActivity || "(blank)"}).`;
 
-      if (suggestionResult?.date) {
-        const occupiedError = buildDateOccupiedError(`${baseMessage} Suggested date: ${suggestionResult.date}.`, suggestionResult);
-        occupiedError.mergePreview = mergePreview;
-        throw occupiedError;
-      }
+        if (suggestionResult?.date) {
+          const occupiedError = buildDateOccupiedError(`${baseMessage} Suggested date: ${suggestionResult.date}.`, suggestionResult);
+          occupiedError.mergePreview = mergePreview;
+          throw occupiedError;
+        }
 
-      if (suggestionResult?.reachedCheckLimit) {
+        if (suggestionResult?.reachedCheckLimit) {
+          const occupiedError = buildDateOccupiedError("All previous rows appear taken. Please select another date.", null);
+          occupiedError.mergePreview = mergePreview;
+          throw occupiedError;
+        }
+
         const occupiedError = buildDateOccupiedError("All previous rows appear taken. Please select another date.", null);
         occupiedError.mergePreview = mergePreview;
         throw occupiedError;
       }
-
-      const occupiedError = buildDateOccupiedError("All previous rows appear taken. Please select another date.", null);
-      occupiedError.mergePreview = mergePreview;
-      throw occupiedError;
     }
 
     if (this.dryRun) {

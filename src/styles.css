@@ -146,10 +146,23 @@ button.secondary:hover:not(:disabled) {
   font-weight: 600;
 }
 
+#decisionMessage {
+  white-space: pre-line;
+  line-height: 1.45;
+}
+
 .suggestion-actions {
   display: flex;
   gap: 0.55rem;
   margin-top: 0.6rem;
+}
+
+#decisionCard {
+  text-align: center;
+}
+
+#decisionCard .suggestion-actions {
+  justify-content: center;
 }
 
 .suggestion-actions button {
@@ -162,6 +175,7 @@ button.secondary:hover:not(:disabled) {
   background: #ecfdf3;
   border-radius: 12px;
   padding: 0.78rem;
+  text-align: center;
 }
 
 .celebration-message {
@@ -175,6 +189,7 @@ button.secondary:hover:not(:disabled) {
   max-width: 280px;
   border-radius: 8px;
   display: block;
+  margin: 0 auto;
 }
 
 .celebration.big {

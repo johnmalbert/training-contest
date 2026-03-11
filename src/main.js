@@ -10,6 +10,7 @@ const suggestionCardEl = document.getElementById("suggestionCard");
 const suggestionMessageEl = document.getElementById("suggestionMessage");
 const suggestionAcceptButton = document.getElementById("suggestionAcceptButton");
 const suggestionCancelButton = document.getElementById("suggestionCancelButton");
+const suggestionAppendButton = document.getElementById("suggestionAppendButton");
 const decisionCardEl = document.getElementById("decisionCard");
 const decisionMessageEl = document.getElementById("decisionMessage");
 const decisionAcceptButton = document.getElementById("decisionAcceptButton");
@@ -89,9 +90,17 @@ function showDecision({ message, acceptLabel = "Yes", cancelLabel = "No" }) {
   });
 }
 
-function showSuggestion({ message, suggestedDate, payload }) {
+function showSuggestion({ message, suggestedDate, payload, mergePreview }) {
   pendingSuggestion = { suggestedDate, payload };
-  suggestionMessageEl.textContent = `You already have a score for this date. Want to add this score to ${formatDateLabel(suggestedDate)} instead?`;
+  const existingMinutes = Number(mergePreview?.existingMinutes);
+  const existingDuration = Number.isFinite(existingMinutes)
+    ? `${Math.floor(existingMinutes / 60)}:${String(existingMinutes % 60).padStart(2, "0")}`
+    : String(mergePreview?.existingDuration || "").trim();
+  const existingActivity = String(mergePreview?.existingActivity || "").trim();
+  const existingWorkoutText =
+    existingDuration && existingActivity ? ` (${existingDuration} ${existingActivity})` : "";
+
+  suggestionMessageEl.textContent = `You already have a score for this date${existingWorkoutText}. You can use ${formatDateLabel(suggestedDate)}, overwrite the existing score for this date, or append this workout to the existing score.`;
   suggestionCardEl.classList.remove("hidden");
 }
 
@@ -100,6 +109,7 @@ function setSubmitting(isSubmitting) {
   submitButton.textContent = isSubmitting ? "Saving..." : defaultSubmitLabel;
   suggestionAcceptButton.disabled = isSubmitting;
   suggestionCancelButton.disabled = isSubmitting;
+  suggestionAppendButton.disabled = isSubmitting;
   decisionAcceptButton.disabled = isSubmitting;
   decisionCancelButton.disabled = isSubmitting;
 }
@@ -112,8 +122,11 @@ function hideCelebration() {
   currentGifIndex = WORKING_GIFS.indexOf(DEFAULT_GIF);
 }
 
-function showCelebration({ player, score }) {
+function showCelebration({ player, score, duration, activity }) {
   const scoreText = score === null || score === undefined || score === "" ? "(not ready yet)" : score;
+  const durationText = duration ? String(duration).trim() : "";
+  const activityText = activity ? String(activity).trim() : "";
+  const workoutText = durationText && activityText ? ` (${durationText} ${activityText})` : "";
   const scoreNumber = Number(score);
   const isBigCelebration = Number.isFinite(scoreNumber) && scoreNumber > 10;
 
@@ -121,7 +134,7 @@ function showCelebration({ player, score }) {
   celebrationGifEl.src = selectedGif;
   currentGifIndex = WORKING_GIFS.indexOf(selectedGif);
   celebrationEl.classList.toggle("big", isBigCelebration);
-  celebrationMessageEl.textContent = `Good job, ${player}! Your score is ${scoreText}.`;
+  celebrationMessageEl.textContent = `Good job, ${player}! Your score is ${scoreText}${workoutText}.`;
   celebrationEl.classList.remove("hidden");
 }
 
@@ -168,13 +181,23 @@ function ensureDateOption(isoDate) {
 function applySuccess(result) {
   hideSuggestion();
   hideDecision();
+  const mergedWorkoutSummary = Array.isArray(result.combinedWorkouts)
+    ? result.combinedWorkouts
+      .map((item) => `${item.activity} ${item.duration}`)
+      .join(" + ")
+    : "";
+
   const baseMessage = result.merged
-    ? `Updated ${result.player} on ${result.date} (row ${result.row}) by combining workouts into ${result.activity} ${result.duration}.`
+    ? mergedWorkoutSummary
+      ? `${mergedWorkoutSummary} → ${result.activity} ${result.duration}.`
+      : `${result.activity} ${result.duration}.`
     : `Saved for ${result.player} on ${result.date} (row ${result.row}).`;
   setStatus(baseMessage, "success");
   showCelebration({
     player: result.player,
-    score: result.score
+    score: result.score,
+    duration: result.duration,
+    activity: result.activity
   });
 }
 
@@ -190,20 +213,71 @@ function buildMergeConfirmMessage(error) {
   const preview = error?.mergePreview;
 
   if (!preview) {
-    return `${error.message}\n\nDo you want to add this workout to the same day by converting points into equivalent duration for the existing activity?`;
+    return `${error.message}\n\nDo you want to add this workout to the same day by converting points into equivalent duration for the higher-scoring activity?`;
   }
 
+  const existingMinutes = Number(preview.existingMinutes);
   const incomingMinutes = Number(preview.incomingMinutes);
+  const existingMultiplier = Number(preview.existingMultiplier);
+  const incomingMultiplier = Number(preview.incomingMultiplier);
+  const existingPoints = Number(preview.existingPoints);
+  const incomingPoints = Number(preview.incomingPoints);
+  const projectedScore = Number(preview.projectedScore);
+  const convertedWorkoutMinutes = Number(preview.convertedWorkoutMinutes);
+  const convertedWorkoutPoints = Number(preview.convertedWorkoutPoints);
   const appendMinutes = Number(preview.appendMinutes);
-  let conversionText = "";
+  const basisMultiplier = Number(preview.basisMultiplier);
+  const basisActivity = String(preview.basisActivity || preview.existingActivity || "").trim();
+  const convertedWorkoutActivity = String(preview.convertedWorkoutActivity || "").trim();
+  const existingActivity = String(preview.existingActivity || "").trim();
+  const incomingActivity = String(preview.incomingActivity || "").trim();
 
-  if (Number.isFinite(incomingMinutes) && incomingMinutes > 0 && Number.isFinite(appendMinutes)) {
-    const factor = appendMinutes / incomingMinutes;
-    const factorText = Number.isInteger(factor) ? String(factor) : factor.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
-    conversionText = ` (${incomingMinutes} * ${factorText} = ${appendMinutes})`;
+  const formatScore = (value) => {
+    if (!Number.isFinite(value)) {
+      return "?";
+    }
+
+    return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+  };
+
+  const formatMinutesLabel = (minutes) => {
+    if (!Number.isFinite(minutes)) {
+      return "unknown duration";
+    }
+
+    const wholeMinutes = Math.round(minutes);
+    return `${wholeMinutes} minute${wholeMinutes === 1 ? "" : "s"}`;
+  };
+
+  const existingMath = Number.isFinite(existingMinutes) && Number.isFinite(existingMultiplier) && Number.isFinite(existingPoints)
+    ? `${existingActivity}: ${existingMinutes} × 0.1 × ${existingMultiplier} = ${formatScore(existingPoints)}`
+    : `${existingActivity}`;
+
+  const incomingMath = Number.isFinite(incomingMinutes) && Number.isFinite(incomingMultiplier) && Number.isFinite(incomingPoints)
+    ? `${incomingActivity}: ${incomingMinutes} × 0.1 × ${incomingMultiplier} = ${formatScore(incomingPoints)}`
+    : `${incomingActivity}`;
+
+  const totalMath = Number.isFinite(existingPoints) && Number.isFinite(incomingPoints) && Number.isFinite(projectedScore)
+    ? `Total score: ${formatScore(existingPoints)} + ${formatScore(incomingPoints)} = ${formatScore(projectedScore)}`
+    : `Total score: ${preview.projectedScore}`;
+
+  let conversionMath = `Converted ${convertedWorkoutActivity} into ${basisActivity} minutes: +${preview.appendMinutes}`;
+
+  if (
+    Number.isFinite(convertedWorkoutMinutes) &&
+    Number.isFinite(convertedWorkoutPoints) &&
+    Number.isFinite(basisMultiplier) &&
+    basisMultiplier > 0 &&
+    Number.isFinite(appendMinutes)
+  ) {
+    conversionMath = `Converted ${convertedWorkoutActivity} into ${basisActivity} minutes: ${formatScore(convertedWorkoutPoints)} ÷ (0.1 × ${basisMultiplier}) = ${appendMinutes}`;
   }
 
-  return `You already have a ${preview.existingActivity} workout for this day. Want to append ${preview.appendMinutes} minutes to bring your score up to ${preview.projectedScore}?${conversionText}`;
+  const existingSummary = Number.isFinite(existingMinutes) && Number.isFinite(existingPoints)
+    ? `This date already has a ${formatMinutesLabel(existingMinutes)} ${existingActivity} (${formatScore(existingPoints)} points).`
+    : `This date already has an existing ${existingActivity} workout.`;
+
+  return `${existingSummary}\n\nWorkout math:\n${existingMath}\n${incomingMath}\n\n${totalMath}\n\nMerge conversion:\nUse ${basisActivity} as the merged activity (higher scoring basis).\n${conversionMath}\n\nFinal merged duration: ${preview.mergedDuration}.\n\nContinue?`;
 }
 
 function prepareForAnotherSameDayEntry() {
@@ -317,14 +391,17 @@ async function loadData() {
   }
 
   playerSelect.innerHTML = "";
+  const placeholderOption = document.createElement("option");
+  placeholderOption.value = "";
+  placeholderOption.textContent = "Select Contender";
+  placeholderOption.selected = true;
+  placeholderOption.disabled = true;
+  playerSelect.append(placeholderOption);
 
-  playersResult.players.forEach((item, index) => {
+  playersResult.players.forEach((item) => {
     const option = document.createElement("option");
     option.value = item.player;
     option.textContent = item.player;
-    if (index === 0) {
-      option.selected = true;
-    }
     playerSelect.append(option);
   });
 
@@ -398,40 +475,43 @@ async function submitEntry() {
   } catch (error) {
     if (error.code === "DATE_ALREADY_POPULATED") {
       setSubmitting(false);
-      const shouldMergeSameDay = await askToMergeSameDay(error);
-
-      if (shouldMergeSameDay) {
-        try {
-          setSubmitting(true);
-          setStatus("Submitting...");
-          const mergedResult = await api("/api/entry", {
-            method: "POST",
-            body: JSON.stringify({
-              ...payload,
-              addToSameDay: true
-            })
-          });
-
-          applySuccess(mergedResult.result);
-          setSubmitting(false);
-          if (await askToAddAnotherSameDay()) {
-            prepareForAnotherSameDayEntry();
-          }
-        } catch (mergeError) {
-          setStatus(mergeError.message, "error");
-          hideCelebration();
-        }
-      } else if (error.suggestion?.date) {
+      if (error.suggestion?.date) {
         showSuggestion({
           message: error.message,
           suggestedDate: error.suggestion.date,
-          payload
+          payload,
+          mergePreview: error.mergePreview
         });
         setStatus("");
         hideCelebration();
       } else {
-        setStatus(error.message, "error");
-        hideCelebration();
+        const shouldMergeSameDay = await askToMergeSameDay(error);
+
+        if (shouldMergeSameDay) {
+          try {
+            setSubmitting(true);
+            setStatus("Submitting...");
+            const mergedResult = await api("/api/entry", {
+              method: "POST",
+              body: JSON.stringify({
+                ...payload,
+                addToSameDay: true
+              })
+            });
+
+            applySuccess(mergedResult.result);
+            setSubmitting(false);
+            if (await askToAddAnotherSameDay()) {
+              prepareForAnotherSameDayEntry();
+            }
+          } catch (mergeError) {
+            setStatus(mergeError.message, "error");
+            hideCelebration();
+          }
+        } else {
+          setStatus(error.message, "error");
+          hideCelebration();
+        }
       }
     } else {
       setStatus(error.message, "error");
@@ -464,6 +544,7 @@ async function applySuggestedDate() {
 
     ensureDateOption(retryPayload.date);
     applySuccess(retryResult.result);
+    setSubmitting(false);
     if (await askToAddAnotherSameDay()) {
       prepareForAnotherSameDayEntry();
     }
@@ -477,8 +558,71 @@ async function applySuggestedDate() {
 }
 
 function cancelSuggestedDate() {
-  hideSuggestion();
-  setStatus("Suggestion dismissed. Choose a different date to continue.", "error");
+  if (!pendingSuggestion) {
+    return;
+  }
+
+  const overwritePayload = {
+    ...pendingSuggestion.payload,
+    overwriteExisting: true
+  };
+
+  setSubmitting(true);
+  setStatus("Overwriting existing score...");
+
+  (async () => {
+    try {
+      const result = await api("/api/entry", {
+        method: "POST",
+        body: JSON.stringify(overwritePayload)
+      });
+
+      applySuccess(result.result);
+      setSubmitting(false);
+      if (await askToAddAnotherSameDay()) {
+        prepareForAnotherSameDayEntry();
+      }
+    } catch (error) {
+      setStatus(error.message, "error");
+      hideCelebration();
+    } finally {
+      setSubmitting(false);
+      updateSubmitEnabled();
+    }
+  })();
+}
+
+async function appendSuggestedWorkout() {
+  if (!pendingSuggestion) {
+    return;
+  }
+
+  const appendPayload = {
+    ...pendingSuggestion.payload,
+    addToSameDay: true
+  };
+
+  setSubmitting(true);
+  setStatus("Appending workout...");
+
+  try {
+    const result = await api("/api/entry", {
+      method: "POST",
+      body: JSON.stringify(appendPayload)
+    });
+
+    applySuccess(result.result);
+    setSubmitting(false);
+    if (await askToAddAnotherSameDay()) {
+      prepareForAnotherSameDayEntry();
+    }
+  } catch (error) {
+    setStatus(error.message, "error");
+    hideCelebration();
+  } finally {
+    setSubmitting(false);
+    updateSubmitEnabled();
+  }
 }
 
 function resolveDecision(value) {
@@ -506,6 +650,7 @@ function resolveDecision(value) {
 submitButton.addEventListener("click", submitEntry);
 suggestionAcceptButton.addEventListener("click", applySuggestedDate);
 suggestionCancelButton.addEventListener("click", cancelSuggestedDate);
+suggestionAppendButton.addEventListener("click", appendSuggestedWorkout);
 decisionAcceptButton.addEventListener("click", () => resolveDecision(true));
 decisionCancelButton.addEventListener("click", () => resolveDecision(false));
 
