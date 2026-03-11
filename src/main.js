@@ -18,6 +18,9 @@ const decisionCancelButton = document.getElementById("decisionCancelButton");
 const celebrationEl = document.getElementById("celebration");
 const celebrationMessageEl = document.getElementById("celebrationMessage");
 const celebrationGifEl = document.getElementById("celebrationGif");
+const celebrationTotalEl = document.getElementById("celebrationTotal");
+const leadersListEl = document.getElementById("leadersList");
+const leadersStatusEl = document.getElementById("leadersStatus");
 const defaultSubmitLabel = submitButton.textContent;
 let pendingSuggestion = null;
 let pendingDecisionResolver = null;
@@ -118,15 +121,23 @@ function hideCelebration() {
   celebrationEl.classList.add("hidden");
   celebrationEl.classList.remove("big");
   celebrationMessageEl.textContent = "";
+  celebrationTotalEl.textContent = "";
+  celebrationTotalEl.classList.add("hidden");
   celebrationGifEl.src = DEFAULT_GIF;
   currentGifIndex = WORKING_GIFS.indexOf(DEFAULT_GIF);
 }
 
-function showCelebration({ player, score, duration, activity }) {
+function showCelebration({ player, score, duration, activity, totalScore }) {
   const scoreText = score === null || score === undefined || score === "" ? "(not ready yet)" : score;
   const durationText = duration ? String(duration).trim() : "";
   const activityText = activity ? String(activity).trim() : "";
   const workoutText = durationText && activityText ? ` (${durationText} ${activityText})` : "";
+  const numericTotalScore = Number(totalScore);
+  const totalScoreText = Number.isFinite(numericTotalScore)
+    ? numericTotalScore.toFixed(1)
+    : totalScore === null || totalScore === undefined || String(totalScore).trim() === ""
+      ? ""
+      : String(totalScore);
   const scoreNumber = Number(score);
   const isBigCelebration = Number.isFinite(scoreNumber) && scoreNumber > 10;
 
@@ -135,6 +146,13 @@ function showCelebration({ player, score, duration, activity }) {
   currentGifIndex = WORKING_GIFS.indexOf(selectedGif);
   celebrationEl.classList.toggle("big", isBigCelebration);
   celebrationMessageEl.textContent = `Good job, ${player}! Your score is ${scoreText}${workoutText}.`;
+  if (totalScoreText) {
+    celebrationTotalEl.textContent = `Your total score for the season is ${totalScoreText}.`;
+    celebrationTotalEl.classList.remove("hidden");
+  } else {
+    celebrationTotalEl.textContent = "";
+    celebrationTotalEl.classList.add("hidden");
+  }
   celebrationEl.classList.remove("hidden");
 }
 
@@ -197,8 +215,43 @@ function applySuccess(result) {
     player: result.player,
     score: result.score,
     duration: result.duration,
-    activity: result.activity
+    activity: result.activity,
+    totalScore: result.totalScore
   });
+
+  loadLeaders().catch(() => {
+    leadersStatusEl.textContent = "Unable to refresh leaders right now.";
+  });
+}
+
+function renderLeaders(leaders) {
+  leadersListEl.innerHTML = "";
+  const rankEmojis = ["🥇", "🥈", "🥉"];
+
+  if (!Array.isArray(leaders) || !leaders.length) {
+    leadersStatusEl.textContent = "No leaderboard data yet.";
+    return;
+  }
+
+  leaders.forEach((entry, index) => {
+    const player = String(entry?.player || "Unknown").trim() || "Unknown";
+    const numericScore = Number(entry?.score);
+    const scoreText = Number.isFinite(numericScore)
+      ? numericScore.toFixed(1)
+      : String(entry?.score ?? "-");
+    const rankEmoji = rankEmojis[index] || "🏅";
+    const li = document.createElement("li");
+    li.textContent = `${rankEmoji} ${player} — ${scoreText}`;
+    leadersListEl.append(li);
+  });
+
+  leadersStatusEl.textContent = "";
+}
+
+async function loadLeaders() {
+  leadersStatusEl.textContent = "Loading leaders...";
+  const result = await api("/api/leaders?limit=3");
+  renderLeaders(result?.leaders);
 }
 
 async function askToAddAnotherSameDay() {
@@ -438,6 +491,11 @@ async function loadData() {
   dateSelect.disabled = false;
   submitButton.disabled = false;
   updateSubmitEnabled();
+  try {
+    await loadLeaders();
+  } catch {
+    leadersStatusEl.textContent = "Unable to load leaders right now.";
+  }
   setStatus("Ready.");
 }
 

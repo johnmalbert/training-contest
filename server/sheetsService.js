@@ -503,6 +503,41 @@ export class SheetsService {
     return [...new Set(dates)];
   }
 
+  async getTopLeaders(limit = 3) {
+    const headerInfo = await this.getHeaderInfo();
+    const totalRow = await this.getTotalRow();
+
+    if (!totalRow) {
+      return [];
+    }
+
+    const scoreReads = headerInfo.players
+      .filter((player) => player.columns.score !== undefined)
+      .map(async (playerInfo) => {
+        const scoreColumn = columnIndexToLetter(playerInfo.columns.score);
+        const rawScore = await this.getCellValue(
+          `${this.sheetName}!${scoreColumn}${totalRow}`,
+          "UNFORMATTED_VALUE"
+        );
+        const numericScore = Number(rawScore);
+
+        if (!Number.isFinite(numericScore)) {
+          return null;
+        }
+
+        return {
+          player: playerInfo.player,
+          score: roundToOneDecimal(numericScore)
+        };
+      });
+
+    const resolvedScores = (await Promise.all(scoreReads)).filter(Boolean);
+
+    return resolvedScores
+      .sort((a, b) => (b.score - a.score) || a.player.localeCompare(b.player))
+      .slice(0, Math.max(1, Number(limit) || 3));
+  }
+
   async getCellValue(range, valueRenderOption = "UNFORMATTED_VALUE") {
     const response = await this.sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,
@@ -577,6 +612,45 @@ export class SheetsService {
     }
 
     return lastRawScore;
+  }
+
+  async getTotalRow(searchRows = 3000) {
+    const headerInfo = await this.getHeaderInfo();
+    const start = headerInfo.firstDataRow;
+    const end = start + Math.max(200, searchRows);
+
+    const response = await this.sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${this.sheetName}!A${start}:B${end}`
+    });
+
+    const rows = response.data.values ?? [];
+
+    for (let i = 0; i < rows.length; i += 1) {
+      const row = rows[i] ?? [];
+      const firstCell = normalize(row[0]);
+      const secondCell = normalize(row[1]);
+
+      if (firstCell === "total" || secondCell === "total") {
+        return start + i;
+      }
+    }
+
+    return null;
+  }
+
+  async getTotalScoreValue(scoreColumn) {
+    if (!scoreColumn) {
+      return null;
+    }
+
+    const totalRow = await this.getTotalRow();
+
+    if (!totalRow) {
+      return null;
+    }
+
+    return this.getCellValue(`${this.sheetName}!${scoreColumn}${totalRow}`, "UNFORMATTED_VALUE");
   }
 
   async assertColumnMappingIsSafe(playerInfo, headerInfo) {
@@ -786,6 +860,7 @@ export class SheetsService {
         const mergedScore = scoreColumn
           ? await this.getScoreValue(scoreColumn, targetRow, existingScoreFormulaText)
           : null;
+        const totalScore = scoreColumn ? await this.getTotalScoreValue(scoreColumn) : null;
 
         return {
           player,
@@ -796,6 +871,7 @@ export class SheetsService {
           durationColumn,
           activityColumn,
           score: mergedScore,
+          totalScore,
           merged: true,
           incomingPoints,
           appendMinutes,
@@ -884,6 +960,7 @@ export class SheetsService {
     const score = scoreColumn
       ? await this.getScoreValue(scoreColumn, targetRow, existingScoreFormulaText)
       : null;
+    const totalScore = scoreColumn ? await this.getTotalScoreValue(scoreColumn) : null;
 
     return {
       player,
@@ -893,7 +970,8 @@ export class SheetsService {
       activity,
       durationColumn,
       activityColumn,
-      score
+      score,
+      totalScore
     };
   }
 }

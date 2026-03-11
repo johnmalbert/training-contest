@@ -192,6 +192,12 @@ button.secondary:hover:not(:disabled) {
   margin: 0 auto;
 }
 
+.celebration-total {
+  margin: 0.6rem 0 0;
+  font-weight: 600;
+  color: #065f46;
+}
+
 .celebration.big {
   border-color: #86efac;
   background: #dcfce7;
@@ -208,4 +214,29 @@ button.secondary:hover:not(:disabled) {
 
 .hidden {
   display: none;
+}
+
+.leaderboard-card {
+  margin-top: 0.9rem;
+}
+
+.leaderboard-title {
+  margin: 0;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.leaderboard-list {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.22rem;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.leaderboard-status {
+  margin: 0.3rem 0 0;
+  color: #334155;
+  font-size: 0.92rem;
 }

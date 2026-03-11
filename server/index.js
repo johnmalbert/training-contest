@@ -60,6 +60,23 @@ app.get("/api/dates", async (req, res) => {
   }
 });
 
+app.get("/api/leaders", async (req, res) => {
+  if (!sheetsService) {
+    return res.status(500).json({
+      error: "Server is not configured. Check Google Sheets environment variables."
+    });
+  }
+
+  const limit = Number(req.query.limit || 3);
+
+  try {
+    const leaders = await sheetsService.getTopLeaders(limit);
+    return res.json({ leaders });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/api/entry", async (req, res) => {
   if (!sheetsService) {
     return res.status(500).json({
