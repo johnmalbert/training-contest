@@ -162,7 +162,7 @@ function renderRecentWorkouts(playerName, workouts) {
   workouts.forEach((workout) => {
     const li = document.createElement("li");
     li.className = "recent-workout-row";
-    const dateLabel = formatDateLabel(workout.date);
+    const dateLabel = formatDateLabel(workout.date, { includeTodayPrefix: false });
     const activity = String(workout.activity || "-").trim() || "-";
     const duration = String(workout.duration || "-").trim() || "-";
     const score = String(workout.score ?? "-").trim() || "-";
@@ -476,7 +476,8 @@ function toIsoDateOnly(date) {
   return `${year}-${month}-${day}`;
 }
 
-function formatDateLabel(isoDate) {
+function formatDateLabel(isoDate, options = {}) {
+  const { includeTodayPrefix = true } = options;
   const date = new Date(`${isoDate}T00:00:00`);
   if (Number.isNaN(date.getTime())) {
     return isoDate;
@@ -486,7 +487,7 @@ function formatDateLabel(isoDate) {
   const monthDay = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const todayIso = toIsoDateOnly(new Date());
 
-  if (isoDate === todayIso) {
+  if (includeTodayPrefix && isoDate === todayIso) {
     return `Today · ${weekday}, ${monthDay}`;
   }
 
