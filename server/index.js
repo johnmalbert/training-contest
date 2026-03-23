@@ -77,6 +77,38 @@ app.get("/api/leaders", async (req, res) => {
   }
 });
 
+app.get("/api/workouts", async (req, res) => {
+  if (!sheetsService) {
+    return res.status(500).json({
+      error: "Server is not configured. Check Google Sheets environment variables."
+    });
+  }
+
+  const player = String(req.query.player || "").trim();
+  const limit = Number(req.query.limit || 3);
+
+  if (!player) {
+    return res.status(400).json({
+      error: "Query parameter 'player' is required."
+    });
+  }
+
+  try {
+    const workouts = await sheetsService.getRecentPlayerWorkouts(player, limit);
+
+    if (!workouts.length) {
+      return res.status(404).json({
+        error: `No workouts found for ${player}.`,
+        code: "NO_WORKOUTS_FOUND"
+      });
+    }
+
+    return res.json({ workouts });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/api/entry", async (req, res) => {
   if (!sheetsService) {
     return res.status(500).json({

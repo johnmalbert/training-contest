@@ -1,6 +1,10 @@
 import "./styles.css";
 
 const playerSelect = document.getElementById("playerSelect");
+const recentWorkoutsEl = document.getElementById("recentWorkouts");
+const recentWorkoutsTitleEl = document.getElementById("recentWorkoutsTitle");
+const recentWorkoutsStatusEl = document.getElementById("recentWorkoutsStatus");
+const recentWorkoutsListEl = document.getElementById("recentWorkoutsList");
 const dateSelect = document.getElementById("dateSelect");
 const durationInput = document.getElementById("durationInput");
 const activitySelect = document.getElementById("activitySelect");
@@ -25,6 +29,7 @@ const leadersStatusEl = document.getElementById("leadersStatus");
 const defaultSubmitLabel = submitButton.textContent;
 let pendingSuggestion = null;
 let pendingDecisionResolver = null;
+let recentWorkoutsRequestId = 0;
 
 const WORKING_GIFS = [
   "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExbHFsY2FpMWx1c251eWQ3YmxjaDF3Nmljbm8ya25iZmJic2xtdDJlZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/QTrG6mjkHEkpFR3DqX/giphy.gif",
@@ -128,6 +133,98 @@ function hideCelebration() {
   currentGifIndex = WORKING_GIFS.indexOf(DEFAULT_GIF);
 }
 
+function hideRecentWorkouts() {
+  recentWorkoutsRequestId += 1;
+  recentWorkoutsEl.classList.add("hidden");
+  recentWorkoutsTitleEl.textContent = "";
+  recentWorkoutsStatusEl.textContent = "";
+  recentWorkoutsListEl.innerHTML = "";
+}
+
+function renderRecentWorkouts(playerName, workouts) {
+  recentWorkoutsEl.classList.remove("hidden");
+  recentWorkoutsTitleEl.textContent = `${playerName}'s Last 3 Workouts`;
+  recentWorkoutsStatusEl.textContent = "";
+  recentWorkoutsListEl.innerHTML = "";
+
+  const headerRow = document.createElement("li");
+  headerRow.className = "recent-workout-row recent-workout-header";
+
+  ["Date", "Type", "Time", "Score"].forEach((label) => {
+    const cell = document.createElement("span");
+    cell.className = "recent-workout-cell";
+    cell.textContent = label;
+    headerRow.append(cell);
+  });
+
+  recentWorkoutsListEl.append(headerRow);
+
+  workouts.forEach((workout) => {
+    const li = document.createElement("li");
+    li.className = "recent-workout-row";
+    const dateLabel = formatDateLabel(workout.date);
+    const activity = String(workout.activity || "-").trim() || "-";
+    const duration = String(workout.duration || "-").trim() || "-";
+    const score = String(workout.score ?? "-").trim() || "-";
+
+    [dateLabel, activity, duration, score].forEach((value) => {
+      const cell = document.createElement("span");
+      cell.className = "recent-workout-cell";
+      cell.textContent = value;
+      li.append(cell);
+    });
+
+    recentWorkoutsListEl.append(li);
+  });
+}
+
+function renderRecentWorkoutsMessage(playerName, message) {
+  recentWorkoutsEl.classList.remove("hidden");
+  recentWorkoutsTitleEl.textContent = `${playerName}'s Last 3 Workouts`;
+  recentWorkoutsStatusEl.textContent = message;
+  recentWorkoutsListEl.innerHTML = "";
+}
+
+async function loadRecentWorkoutsForPlayer(playerName) {
+  const safePlayerName = String(playerName || "").trim();
+
+  if (!safePlayerName) {
+    hideRecentWorkouts();
+    return;
+  }
+
+  const requestId = ++recentWorkoutsRequestId;
+  renderRecentWorkoutsMessage(safePlayerName, "Loading recent workouts...");
+
+  try {
+    const result = await api(`/api/workouts?player=${encodeURIComponent(safePlayerName)}&limit=3`);
+
+    if (requestId !== recentWorkoutsRequestId) {
+      return;
+    }
+
+    const workouts = Array.isArray(result?.workouts) ? result.workouts : [];
+
+    if (!workouts.length) {
+      renderRecentWorkoutsMessage(safePlayerName, "No workouts found yet.");
+      return;
+    }
+
+    renderRecentWorkouts(safePlayerName, workouts);
+  } catch (error) {
+    if (requestId !== recentWorkoutsRequestId) {
+      return;
+    }
+
+    if (error.code === "NO_WORKOUTS_FOUND" || error.status === 404) {
+      renderRecentWorkoutsMessage(safePlayerName, "No workouts found yet.");
+      return;
+    }
+
+    renderRecentWorkoutsMessage(safePlayerName, "Could not load workouts right now.");
+  }
+}
+
 function showCelebration({ player, score, duration, activity, totalScore }) {
   const scoreText = score === null || score === undefined || score === "" ? "(not ready yet)" : score;
   const durationText = duration ? String(duration).trim() : "";
@@ -224,6 +321,10 @@ function applySuccess(result) {
 
   loadLeaders().catch(() => {
     leadersStatusEl.textContent = "Unable to refresh leaders right now.";
+  });
+
+  loadRecentWorkoutsForPlayer(result.player).catch(() => {
+    renderRecentWorkoutsMessage(result.player, "Could not load workouts right now.");
   });
 }
 
@@ -428,6 +529,7 @@ async function loadData() {
   hideSuggestion();
   hideDecision();
   hideCelebration();
+  hideRecentWorkouts();
 
   const playersResult = await api("/api/players");
   const datesResult = await api("/api/dates?limit=90");
@@ -700,6 +802,15 @@ function resolveDecision(value) {
       setStatus("");
     }
     updateSubmitEnabled();
+  });
+});
+
+playerSelect.addEventListener("change", () => {
+  loadRecentWorkoutsForPlayer(playerSelect.value).catch(() => {
+    const playerName = String(playerSelect.value || "").trim();
+    if (playerName) {
+      renderRecentWorkoutsMessage(playerName, "Could not load workouts right now.");
+    }
   });
 });
 

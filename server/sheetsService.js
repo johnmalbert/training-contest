@@ -538,6 +538,110 @@ export class SheetsService {
       .slice(0, Math.max(1, Number(limit) || 3));
   }
 
+  async getRecentPlayerWorkouts(player, limit = 3) {
+    const safePlayer = String(player ?? "").trim();
+    if (!safePlayer) {
+      throw new Error("Player is required.");
+    }
+
+    const requestedLimit = Number(limit);
+    const safeLimit = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.min(20, Math.floor(requestedLimit)))
+      : 3;
+
+    const headerInfo = await this.getHeaderInfo();
+    const playerInfo = headerInfo.players.find((item) => item.player === safePlayer);
+
+    if (!playerInfo) {
+      throw new Error(`Unknown player: ${safePlayer}`);
+    }
+
+    const dateRows = await this.getDateRows(1000);
+    if (!dateRows.length) {
+      return [];
+    }
+
+    const durationColumnIndex = playerInfo.columns.duration;
+    const activityColumnIndex = playerInfo.columns.activity;
+    const scoreColumnIndex =
+      playerInfo.columns.score !== undefined ? playerInfo.columns.score : null;
+
+    const minColumnIndex = Math.min(
+      durationColumnIndex,
+      activityColumnIndex,
+      scoreColumnIndex ?? activityColumnIndex
+    );
+    const maxColumnIndex = Math.max(
+      durationColumnIndex,
+      activityColumnIndex,
+      scoreColumnIndex ?? activityColumnIndex
+    );
+    const startRow = headerInfo.firstDataRow;
+    const endRow = dateRows[dateRows.length - 1].row;
+
+    const response = await this.sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${this.sheetName}!${columnIndexToLetter(minColumnIndex)}${startRow}:${columnIndexToLetter(maxColumnIndex)}${endRow}`,
+      valueRenderOption: "UNFORMATTED_VALUE"
+    });
+
+    const rowValues = response.data.values ?? [];
+    const valueAtColumn = (values, columnIndex) => {
+      if (columnIndex === null || columnIndex === undefined) {
+        return "";
+      }
+
+      return values?.[columnIndex - minColumnIndex];
+    };
+
+    const entries = [];
+    const sortedRows = [...dateRows].sort((a, b) => {
+      const byDate = new Date(b.date).getTime() - new Date(a.date).getTime();
+      return byDate || b.row - a.row;
+    });
+
+    for (const rowInfo of sortedRows) {
+      const values = rowValues[rowInfo.row - startRow] ?? [];
+      const rawDuration = valueAtColumn(values, durationColumnIndex);
+      const rawActivity = valueAtColumn(values, activityColumnIndex);
+      const rawScore = valueAtColumn(values, scoreColumnIndex);
+
+      const activity = String(rawActivity ?? "").trim();
+      const hasActivity = Boolean(activity) && activity !== "-";
+
+      let duration = "";
+      if (rawDuration !== null && rawDuration !== undefined && String(rawDuration).trim() !== "") {
+        try {
+          duration = formatMinutesToDuration(parseDurationToMinutes(rawDuration));
+        } catch {
+          duration = String(rawDuration).trim();
+        }
+      }
+
+      if (!duration || !hasActivity) {
+        continue;
+      }
+
+      const numericScore = Number(rawScore);
+      const score = Number.isFinite(numericScore)
+        ? roundToOneDecimal(numericScore)
+        : String(rawScore ?? "").trim() || "-";
+
+      entries.push({
+        date: rowInfo.date,
+        activity,
+        duration,
+        score
+      });
+
+      if (entries.length >= safeLimit) {
+        break;
+      }
+    }
+
+    return entries;
+  }
+
   async getCellValue(range, valueRenderOption = "UNFORMATTED_VALUE") {
     const response = await this.sheets.spreadsheets.values.get({
       spreadsheetId: this.spreadsheetId,

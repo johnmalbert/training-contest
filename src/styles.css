@@ -140,6 +140,58 @@ button.secondary:hover:not(:disabled) {
   padding: 0.78rem;
 }
 
+.recent-workouts {
+  margin-top: 0.3rem;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  border-radius: 12px;
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+.recent-workouts-title {
+  margin: 0;
+  color: #1e3a8a;
+  font-weight: 700;
+}
+
+.recent-workouts-status {
+  margin: 0.3rem 0 0;
+  color: #1e3a8a;
+  font-weight: 500;
+  font-size: 0.92rem;
+}
+
+.recent-workouts-list {
+  margin: 0.45rem 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.22rem;
+  color: #0f172a;
+}
+
+.recent-workout-row {
+  display: grid;
+  grid-template-columns: 180px 120px 90px 80px;
+  column-gap: 0.5rem;
+  min-width: 500px;
+  align-items: center;
+}
+
+.recent-workout-header {
+  font-weight: 700;
+  color: #1e3a8a;
+  border-bottom: 1px solid #bfdbfe;
+  padding-bottom: 0.2rem;
+}
+
+.recent-workout-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .suggestion-message {
   margin: 0;
   color: #1e3a8a;
